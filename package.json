@@ -1,0 +1,17 @@
+{
+  "name": "bangali",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "SusPoocha",
+  "license": "ISC",
+  "dependencies": {
+    "minecraft-data": "^3.50.0",
+    "mineflayer": "^4.14.0",
+    "mineflayer-pathfinder": "^2.4.5",
+    "prismarine-viewer": "^1.26.2"
+  }
+}
