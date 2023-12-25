@@ -3,11 +3,11 @@ const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
 const axios = require('axios');
 
 class BotController {
-    constructor(botConfig, reconnectDelay, farmCoordinates, mobTypeToAttack) {
+    constructor(botConfig, reconnectDelay, farmCoordinates, mobsToAttack) {
         this.botConfig = botConfig;
         this.reconnectDelay = reconnectDelay;
         this.farmCoordinates = farmCoordinates;
-        this.mobTypeToAttack = mobTypeToAttack;
+        this.mobsToAttack = mobsToAttack;
 
         // Setup bot connection
         this.bot = mineflayer.createBot(this.botConfig);
@@ -27,12 +27,12 @@ class BotController {
 
         this.bot.on('end', (err) => {
             console.log(`Disconnected: ${err ? err : 'intentional disconnect'}`);
-            this.sendDiscordMessage(`🤖 🦵 ${this.bot.username} Disconnected`);
+            this.sendDiscordMessage(`(🦵) ${this.bot.username} Disconnected`);
             setTimeout(() => this.initBot(), this.reconnectDelay);
         });
 
         this.bot.on('kicked', (reason) => {
-            this.sendDiscordMessage(`🤖...🦵 ...${this.bot.username} got kicked from the server - Reason > ${reason}`);
+            this.sendDiscordMessage(`(🦵) ...${this.bot.username} got kicked from the server - Reason > ${reason}`);
             console.log('Kicked for reason', reason);
             setTimeout(() => this.initBot(), this.reconnectDelay);
         });
@@ -62,16 +62,27 @@ class BotController {
                 this.npcTp();
 
             } else if (message.toString().includes('Unknown command. Type "/help" for help')) {
-                const radius = 20;
+                const radius = 3.3;
                 const targetCoordinates = this.bot.currentPosition;
 
-                // this.checkProximity(targetCoordinates, radius, () => {
-                //     console.log('Bot is within the proximity!');
-                //     // this.yourFunction();
-                // });
+
                 const farmStatus = this.isNearFarm(this.farmCoordinates);
-                const dcMsg = `🤖...🔑...${this.bot.username} just logged in, status > ${farmStatus.toString()}`;
+                const dcMsg = `(🔑)...${this.bot.username} ready for duty, status > ${farmStatus.toString()}`;
                 this.sendDiscordMessage(dcMsg);
+
+                
+                if (farmStatus.includes('At')) {
+                    if (farmStatus.includes('Kill')) {
+                        this.attackMobsInListIfNearby(this.mobsToAttack, radius);
+                    } else if (farmStatus.includes('Afk')) {
+                        this.antiAfk();
+                    }
+                }
+
+
+
+
+
                 this.anarchyWork();
             }
         });
@@ -219,37 +230,49 @@ class BotController {
         });
     }
 
-    attackMobIfNearby(targetCoordinates, proximityRadius) {
-        const isMob = (entity) => entity.type === this.mobTypeToAttack;
-        const botPosition = this.bot.entity.position;
-        const nearbyMob = this.bot.nearestEntity(isMob);
-
-        this.checkProximity(targetCoordinates, proximityRadius, () => {
-            if (nearbyMob && this.isMobInRange(nearbyMob, targetCoordinates, proximityRadius)) {
-                setTimeout(() => {
-                    this.bot.attack(nearbyMob);
-                }, 1000);
-            }
-        });
-    }
-
-    attackHostileMobsIfNearby(proximityRadius) {
-        const nearbyHostileMobs = this.bot.findEntities({
-            type: 'mob',
-            position: this.bot.entity.position,
-            radius: proximityRadius,
-            count: 10,
-            matching: (entity) => this.bot.mobTracker.isMobHostile(entity)
-        });
-
-        if (nearbyHostileMobs.length > 0) {
-            for (const mob of nearbyHostileMobs) {
-                setTimeout(() => {
-                    this.bot.attack(mob);
-                }, 1000);
+    attackMobsInListIfNearby(mobsToAttack, proximityRadius) {
+        const isMobInList = (entity) => mobsToAttack.includes(entity.type);
+    
+        const nearbyMobs = this.bot.nearestEntity((entity) => isMobInList(entity) && this.isMobInRange(entity, this.bot.entity.position, proximityRadius));
+    
+        // Check if the bot is holding a sword
+        const hasSword = this.bot.inventory.slots.some((item) => item && item.name.includes('sword') && item.type === 'tool' && item.material === 'diamond');
+    
+        if (!hasSword) {
+            // Search for a sword in the inventory and hot bar
+            const sword = this.findSwordInInventory();
+            
+            if (sword) {
+                // Equip the sword
+                this.bot.equip(sword, 'hand');
+            } else {
+                // Log a message to Discord about not finding a sword
+                this.sendDiscordMessage(`⚠️ ${this.bot.name} cannot find a sword`);
+                return; // Stop further processing if no sword is found
             }
         }
+    
+        if (nearbyMobs) {
+            setTimeout(() => {
+                this.bot.attack(nearbyMobs);
+            }, 1000);
+        } else {
+            // No nearby mobs found, wait for 2 seconds and then search again
+            setTimeout(() => {
+                this.attackMobsInListIfNearby(mobsToAttack, proximityRadius);
+            }, 2000);
+        }
     }
+    
+    
+    findSwordInInventory() {
+        // Search for a sword in the inventory and hot bar
+        const sword = this.bot.inventory.slots.find((item) => item && item.name.includes('sword') && item.type === 'tool' && item.material === 'diamond');
+        
+        return sword;
+    }
+    
+    
 
     checkProximity(targetCoordinates, radius, callback) {
         const botPosition = this.bot.entity.position;
@@ -284,18 +307,18 @@ class BotController {
 const botConfig = {
     host: '139.99.124.74',
     port: '25576',
-    username: "__Lnzz__",
+    username: "SILENT",
     version: '1.20.1',
     hideError: false
 };
 
 const reconnectDelay = 10000;
-
+const mobsToAttack = ['ghast', 'zombified_piglin'];
 const farmCoordinates = {
     'Gast Farm Kill Chamber': { x: -99579, y: 128, z: -301193 },
     'Gast Farm Afk Chamber': { x: -12448, y: 175, z: -37649 }
 };
 
-const mobTypeToAttack = 'gast';
 
-const botController = new BotController(botConfig, reconnectDelay, farmCoordinates, mobTypeToAttack);
+
+const botController = new BotController(botConfig, reconnectDelay, farmCoordinates, mobsToAttack);
