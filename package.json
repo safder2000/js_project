@@ -9,6 +9,7 @@
   "author": "SusPoocha",
   "license": "ISC",
   "dependencies": {
+    "axios": "^1.6.2",
     "minecraft-data": "^3.50.0",
     "mineflayer": "^4.14.0",
     "mineflayer-pathfinder": "^2.4.5",
