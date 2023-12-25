@@ -20,7 +20,7 @@ class BotController {
 
         this.bot.on('spawn', async () => {
             console.log("Spawned in");
-            await this.bot.waitForTicks(10);
+            await this.bot.waitForTicks(100);
             this.bot.chat("/login poocha");
             this.handleAfterLogin();
         });
@@ -55,9 +55,9 @@ class BotController {
 
         this.bot.once('message', (message) => {
             if (message.toString().includes('Successful login!')) {
-                if (!message.toString().includes('left the game') && !message.toString().includes('joined the game') && !message.toString().includes('was killed by')) {
-                    console.log(`[Chat] ${message.toString()}`);
-                }
+                // if (!message.toString().includes('left the game') && !message.toString().includes('joined the game') && !message.toString().includes('was killed by')) {
+                //     console.log(`[Chat] ${message.toString()}`);
+                // }
 
                 this.npcTp();
 
@@ -73,18 +73,49 @@ class BotController {
                 
                 if (farmStatus.includes('At')) {
                     if (farmStatus.includes('Kill')) {
-                        this.attackMobsInListIfNearby(this.mobsToAttack, radius);
+                        // setInterval(() => {
+                            const armorStandPos = { x: -99579, y: 128, z: -301193 }
+                            this.moveToArmorStandAndAttack( armorStandPos);
+
+                            // this.attackMobsInListIfNearby(this.mobsToAttack, radius);
+                        // }, 1000);
+                   
                     } else if (farmStatus.includes('Afk')) {
                         this.antiAfk();
                     }
                 }
 
 
-
-
-
-                this.anarchyWork();
+                console.log('loop exit');
             }
+        });
+    }
+
+    moveToArmorStandAndAttack(targetPosition) {
+        const defaultMove = new Movements(this.bot);
+    
+        const target = new goals.GoalNear(targetPosition.x, targetPosition.y, targetPosition.z, 1);
+    
+        this.bot.pathfinder.setMovements(defaultMove);
+        this.bot.pathfinder.setGoal(target);
+    
+        this.bot.on('goal_reached', () => {
+            this.bot.lookAt(this.bot.entity.position.offset(0, -1.6, 0));
+    
+            setInterval(() => {
+                const mobFilter = e => e.type === 'mob';
+                const mob = this.bot.nearestEntity(mobFilter);
+    
+                if (mob) {
+                    console.log('Attacking mob!');
+                    // Generate a random delay between 1 to 3 seconds
+                    const delay = Math.floor(Math.random() * (3000 - 1000 + 1)) + 1000;
+    
+                    setTimeout(() => {
+                        this.bot.attack(mob);
+                    }, delay);
+                }
+            }, 1000);
         });
     }
 
@@ -127,7 +158,7 @@ class BotController {
         try {
             axios.post(webhookUrl, { content: content })
                 .then(response => {
-                    console.log('Message sent successfully:', response.data);
+                    console.log('Message sent successfully:'+content.toString(), response.data);
                 })
                 .catch(error => {
                     console.error('Error sending message:', error.message);
@@ -146,21 +177,26 @@ class BotController {
             const botPosition = this.bot.entity.position;
             const botXZ = { x: botPosition.x, z: botPosition.z };
             const distance = Math.sqrt(
-                Math.pow(botXZ.x - coordinates.x, 3) + Math.pow(botXZ.z - coordinates.z, 3)
+                Math.pow(botXZ.x - coordinates.x, 2) + Math.pow(botXZ.z - coordinates.z, 2)
             );
             return distance <= radius;
         };
     
         for (const [farmName, coordinates] of Object.entries(farmCoordinates)) {
+            console.log(`Checking proximity for ${farmName}`);
+            
             if (checkProximity(coordinates, proximityRadius)) {
+                console.log(`At ${farmName}`);
                 return `At ${farmName}`;
             }
     
             if (checkProximity(coordinates, nearProximityRadius)) {
+                console.log(`Near ${farmName}`);
                 return `Near ${farmName}`;
             }
         }
     
+        console.log('Not near any farm');
         return 'Not near any farm';
     }
     
@@ -199,7 +235,6 @@ class BotController {
             });
         });
     }
-
     lookAtAndActivateEntity() {
         try {
             const maxDistance = 3.5;
@@ -231,32 +266,24 @@ class BotController {
     }
 
     attackMobsInListIfNearby(mobsToAttack, proximityRadius) {
-        const isMobInList = (entity) => mobsToAttack.includes(entity.type);
+        const mobFilter = e => e.type === 'mob' && (e.displayName === 'Ghast' || e.mobType === 'Zombified Piglin' || e.mobType === 'Skeleton');
+        const mob = this.bot.nearestEntity(mobFilter);
     
-        const nearbyMobs = this.bot.nearestEntity((entity) => isMobInList(entity) && this.isMobInRange(entity, this.bot.entity.position, proximityRadius));
-    
-        // Check if the bot is holding a sword
-        const hasSword = this.bot.inventory.slots.some((item) => item && item.name.includes('sword') && item.type === 'tool' && item.material === 'diamond');
-    
-        if (!hasSword) {
-            // Search for a sword in the inventory and hot bar
-            const sword = this.findSwordInInventory();
-            
-            if (sword) {
-                // Equip the sword
-                this.bot.equip(sword, 'hand');
-            } else {
-                // Log a message to Discord about not finding a sword
-                this.sendDiscordMessage(`⚠️ ${this.bot.name} cannot find a sword`);
-                return; // Stop further processing if no sword is found
-            }
-        }
-    
-        if (nearbyMobs) {
-            setTimeout(() => {
-                this.bot.attack(nearbyMobs);
-            }, 1000);
+        if (mob) {
+            console.log('Mob found');
+            const pos = mob.position;
+            this.bot.lookAt(pos, true, () => {
+                console.log('Looking at mob');
+                this.bot.attack(mob, true, () => {
+                    console.log('Attacking mob');
+                    // Wait for the attack to complete before retrying
+                    setTimeout(() => {
+                        this.attackMobsInListIfNearby(mobsToAttack, proximityRadius);
+                    }, 2000);
+                });
+            });
         } else {
+            console.log('Mob not found... retrying in 2 seconds');
             // No nearby mobs found, wait for 2 seconds and then search again
             setTimeout(() => {
                 this.attackMobsInListIfNearby(mobsToAttack, proximityRadius);
@@ -265,7 +292,7 @@ class BotController {
     }
     
     
-    findSwordInInventory() {
+    findSwordInInventoryAndHotBar() {
         // Search for a sword in the inventory and hot bar
         const sword = this.bot.inventory.slots.find((item) => item && item.name.includes('sword') && item.type === 'tool' && item.material === 'diamond');
         
@@ -276,6 +303,7 @@ class BotController {
 
     checkProximity(targetCoordinates, radius, callback) {
         const botPosition = this.bot.entity.position;
+        log.console(bot.entity.name +": position > x"+botPosition.x.toString()+", z"+botPosition.y.toString());
         const botXZ = { x: botPosition.x, z: botPosition.z };
         const distance = Math.sqrt(
             Math.pow(botXZ.x - targetCoordinates.x, 2) + Math.pow(botXZ.z - targetCoordinates.z, 2)
@@ -297,28 +325,39 @@ class BotController {
 
         this.bot.on('spawn', async () => {
             console.log("Spawned in");
+            this.bot.once('message', (message) => {   if (!message.toString().includes('left the game') && !message.toString().includes('joined the game') && !message.toString().includes('was killed by')) {
+                console.log(`[Chat] ${message.toString()}`);
+            }});
             await this.bot.waitForTicks(10);
             this.bot.chat("/login poocha");
             this.handleAfterLogin();
         });
     }
 }
-
-const botConfig = {
+const botNames = ['__Lnzz__', 'SILENT'];
+const baseBotConfig = {
     host: '139.99.124.74',
     port: '25576',
-    username: "SILENT",
+    // username: "SILENT",
     version: '1.20.1',
     hideError: false
 };
-
-const reconnectDelay = 10000;
-const mobsToAttack = ['ghast', 'zombified_piglin'];
+const botControllers = [];
+const reconnectDelay = 15000;
+const mobsToAttack = ['Ghast', 'zombified_piglin'];
 const farmCoordinates = {
     'Gast Farm Kill Chamber': { x: -99579, y: 128, z: -301193 },
     'Gast Farm Afk Chamber': { x: -12448, y: 175, z: -37649 }
 };
 
+for (const name of botNames) {
+    const botConfig = {
+        ...baseBotConfig,
+        username: name
+    };
 
+    const botController = new BotController(botConfig, reconnectDelay, farmCoordinates, mobsToAttack);
+    botControllers.push(botController);
+}
 
-const botController = new BotController(botConfig, reconnectDelay, farmCoordinates, mobsToAttack);
+// const botController = new BotController(botConfig, reconnectDelay, farmCoordinates, mobsToAttack);
