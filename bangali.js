@@ -2,8 +2,17 @@ const mineflayer = require('mineflayer');
 const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
 const axios = require('axios');
 
+
+
+
+
 class BotController {
     constructor(botConfig, reconnectDelay, farmCoordinates, mobsToAttack) {
+        this.shouldCheckActivity = true;
+        this. lastActivityTimestamp = Date.now();
+        this.timeoutIds = [];
+        this.intervalIds = [];
+
         this.botConfig = botConfig;
         this.reconnectDelay = reconnectDelay;
         this.farmCoordinates = farmCoordinates;
@@ -20,7 +29,7 @@ class BotController {
 
         this.bot.on('spawn', async () => {
             console.log("Spawned in");
-            await this.bot.waitForTicks(100);
+            await this.bot.waitForTicks(50);
             this.bot.chat("/login poocha");
             this.handleAfterLogin();
         });
@@ -28,12 +37,22 @@ class BotController {
         this.bot.on('end', (err) => {
             console.log(`Disconnected: ${err ? err : 'intentional disconnect'}`);
             this.sendDiscordMessage(`(🦵) ${this.bot.username} Disconnected`);
+
+            // Clear all timeouts
+            this.timeoutIds.forEach((timeoutId) => clearTimeout(timeoutId));
+            this.timeoutIds = [];
+
+            // Clear all intervals
+            this.intervalIds.forEach((intervalId) => clearInterval(intervalId));
+            this.intervalIds = [];
+
             setTimeout(() => this.initBot(), this.reconnectDelay);
         });
 
         this.bot.on('kicked', (reason) => {
             this.sendDiscordMessage(`(🦵) ...${this.bot.username} got kicked from the server - Reason > ${reason}`);
             console.log('Kicked for reason', reason);
+            console.log(`Try reconnecting in: ${this.reconnectDelay / 1000} seconds`);
             setTimeout(() => this.initBot(), this.reconnectDelay);
         });
 
@@ -43,54 +62,98 @@ class BotController {
             } else {
                 console.log(`Unhandled error: ${err}`);
             }
+            console.log(`Try reconnecting in: ${this.reconnectDelay / 1000} seconds`);
+            setTimeout(() => this.initBot(), this.reconnectDelay);
         });
     }
-
+    checkActivity() {
+        if (!this.shouldCheckActivity) {
+            return;
+        }
+    
+        const currentTime = Date.now();
+        const elapsedTime = currentTime - this.lastActivityTimestamp;
+    
+        // Check if the bot is within a 100 block radius of 0,0,0
+        const proximityRadius = 100;
+        const botPosition = this.bot.entity.position;
+        const distanceToZeroZero = Math.sqrt(
+            Math.pow(botPosition.x, 2) + Math.pow(botPosition.y, 2) + Math.pow(botPosition.z, 2)
+        );
+    
+        // Check if the chat message contains a specific string
+        const chatMessage = this.bot.chatHistory && this.bot.chatHistory.length > 0
+            ? this.bot.chatHistory[this.bot.chatHistory.length - 1].toString()
+            : null;
+    
+        if (chatMessage && chatMessage.includes('Unknown command. Type "/help" for help')) {
+            console.log('Received the specified chat message. Stopping checkActivity...');
+    
+            // Stop further execution of checkActivity
+            this.shouldCheckActivity = false;
+        } else if (elapsedTime > 120000 && distanceToZeroZero > proximityRadius) {
+            console.log('No activity for over 1 minute. Stopping checkActivity...');
+    
+            // Stop further execution of checkActivity
+            this.shouldCheckActivity = false;
+        } else {
+            setTimeout(() => this.checkActivity(), 10000); // Check activity every 10 seconds
+        }
+    }
+    
     handleAfterLogin() {
         const defaultMove = new Movements(this.bot);
-
+    
         this.bot.on('chat', (username, message) => {
             // Your chat event logic here...
         });
-
+    
+    
+        
+    
         this.bot.once('message', (message) => {
+
+    
             if (message.toString().includes('Successful login!')) {
-                // if (!message.toString().includes('left the game') && !message.toString().includes('joined the game') && !message.toString().includes('was killed by')) {
-                //     console.log(`[Chat] ${message.toString()}`);
-                // }
-
+                this. lastActivityTimestamp = Date.now();
                 this.npcTp();
-
+                this.checkActivity();
             } else if (message.toString().includes('Unknown command. Type "/help" for help')) {
-                const radius = 3.3;
-                const targetCoordinates = this.bot.currentPosition;
+                console.log('Received the specified chat message. Stopping checkActivity...');
+
+                // Clear all timeouts and intervals before stopping
+                this.clearTimeoutsAndIntervals();
+                   const radius = 3.3;
+         
 
 
-                const farmStatus = this.isNearFarm(this.farmCoordinates);
-                const dcMsg = `(🔑)...${this.bot.username} ready for duty, status > ${farmStatus.toString()}`;
-                this.sendDiscordMessage(dcMsg);
+    const farmStatus = this.isNearFarm(this.farmCoordinates);
+    const dcMsg = `(🔑)...${this.bot.username} ready for duty, status > ${farmStatus.toString()}`;
+    this.sendDiscordMessage(dcMsg);
 
-                
-                if (farmStatus.includes('At')) {
-                    if (farmStatus.includes('Kill')) {
-                        // setInterval(() => {
-                            const armorStandPos = { x: -99579, y: 128, z: -301193 }
-                            this.moveToArmorStandAndAttack( armorStandPos);
+    
+    if (farmStatus.includes('At')) {
+        if (farmStatus.includes('Kill')) {
+        
+                const armorStandPos = { x: -99579, y: 128, z: -301193 }
+                this.moveToArmorStandAndAttack( armorStandPos);
 
-                            // this.attackMobsInListIfNearby(this.mobsToAttack, radius);
-                        // }, 1000);
-                   
-                    } else if (farmStatus.includes('Afk')) {
-                        this.antiAfk();
-                    }
-                }
-
-
-                console.log('loop exit');
-            }
-        });
+       
+        } else if (farmStatus.includes('Afk')) {
+            this.antiAfk();
+        }
     }
 
+            }
+        });
+    
+        // Start checking for inactivity
+     
+    }
+    
+
+
+    // console.log('loop exit');
     moveToArmorStandAndAttack(targetPosition) {
         const defaultMove = new Movements(this.bot);
     
@@ -102,7 +165,7 @@ class BotController {
         this.bot.on('goal_reached', () => {
             this.bot.lookAt(this.bot.entity.position.offset(0, -1.6, 0));
     
-            setInterval(() => {
+            const intervalId = setInterval(() => {
                 const mobFilter = e => e.type === 'mob';
                 const mob = this.bot.nearestEntity(mobFilter);
     
@@ -116,6 +179,7 @@ class BotController {
                     }, delay);
                 }
             }, 1000);
+            this.intervalIds.push(intervalId);
         });
     }
 
@@ -196,7 +260,7 @@ class BotController {
             }
         }
     
-        console.log('Not near any farm');
+        console.log(` ${this.bot.name} ⚠️ Not near any farm`);
         return 'Not near any farm';
     }
     
@@ -265,32 +329,7 @@ class BotController {
         });
     }
 
-    attackMobsInListIfNearby(mobsToAttack, proximityRadius) {
-        const mobFilter = e => e.type === 'mob' && (e.displayName === 'Ghast' || e.mobType === 'Zombified Piglin' || e.mobType === 'Skeleton');
-        const mob = this.bot.nearestEntity(mobFilter);
-    
-        if (mob) {
-            console.log('Mob found');
-            const pos = mob.position;
-            this.bot.lookAt(pos, true, () => {
-                console.log('Looking at mob');
-                this.bot.attack(mob, true, () => {
-                    console.log('Attacking mob');
-                    // Wait for the attack to complete before retrying
-                    setTimeout(() => {
-                        this.attackMobsInListIfNearby(mobsToAttack, proximityRadius);
-                    }, 2000);
-                });
-            });
-        } else {
-            console.log('Mob not found... retrying in 2 seconds');
-            // No nearby mobs found, wait for 2 seconds and then search again
-            setTimeout(() => {
-                this.attackMobsInListIfNearby(mobsToAttack, proximityRadius);
-            }, 2000);
-        }
-    }
-    
+
     
     findSwordInInventoryAndHotBar() {
         // Search for a sword in the inventory and hot bar
@@ -299,8 +338,52 @@ class BotController {
         return sword;
     }
     
-    
+    checkHealthAndHunger() {
 
+        console.log('💓 Checking health');
+        const healthWarningThreshold = 15; // Send warning if health is below 15
+        const healthDisconnectThreshold = 10; // Disconnect if health is below 10
+        const hungerWarningThreshold = 15; // Send warning if hunger is below 15
+        const hungerDisconnectThreshold = 10; // Disconnect if hunger is below 10
+    
+        const health = this.bot.health;
+        const hunger = this.bot.food;
+    
+        if (health < healthWarningThreshold) {
+            console.log(`Bot's health is below ${healthWarningThreshold}. Sending warning...`);
+            this.sendDiscordMessage(`(⚠️) ${this.bot.username}'s health is low (${health}).`);
+        }
+    
+        if (hunger < hungerWarningThreshold) {
+            console.log(`Bot's hunger is below ${hungerWarningThreshold}. Sending warning...`);
+            this.sendDiscordMessage(`(⚠️) ${this.bot.username}'s hunger is low (${hunger}).`);
+        }
+    
+        if (health < healthDisconnectThreshold || hunger < hungerDisconnectThreshold) {
+            console.log(` ${this.bot.username}__health or hunger is below the disconnect threshold. Disconnecting...`);
+    
+            // Clear all timeouts and intervals before disconnecting
+            this.timeoutIds.forEach((timeoutId) => clearTimeout(timeoutId));
+            this.timeoutIds = [];
+    
+            this.intervalIds.forEach((intervalId) => clearInterval(intervalId));
+            this.intervalIds = [];
+    
+            // Send disconnect message
+            this.sendDiscordMessage(`(⚠️) ${this.bot.username} disconnected due to low health or hunger`);
+    
+            // Disconnect the bot
+            this.bot.end();
+        }
+    }
+    clearTimeoutsAndIntervals() {
+        // Implement logic to clear timeouts and intervals
+        // For example, if you have stored interval IDs in an array, you can clear them like this:
+        for (const intervalId of this.intervalIds) {
+            clearInterval(intervalId);
+        }
+        this.intervalIds = []; // Clear the array of interval IDs
+    }
     checkProximity(targetCoordinates, radius, callback) {
         const botPosition = this.bot.entity.position;
         log.console(bot.entity.name +": position > x"+botPosition.x.toString()+", z"+botPosition.y.toString());
@@ -325,16 +408,36 @@ class BotController {
 
         this.bot.on('spawn', async () => {
             console.log("Spawned in");
+            await this.bot.waitForTicks(10);
             this.bot.once('message', (message) => {   if (!message.toString().includes('left the game') && !message.toString().includes('joined the game') && !message.toString().includes('was killed by')) {
                 console.log(`[Chat] ${message.toString()}`);
             }});
-            await this.bot.waitForTicks(10);
+            await this.bot.waitForTicks(50);
             this.bot.chat("/login poocha");
+            console.log('🔑 Password entered ');
             this.handleAfterLogin();
+            const healthHungerCheckInterval = setInterval(() => {
+                this.checkHealthAndHunger();
+            }, 60000);  
+            this.intervalIds.push(healthHungerCheckInterval);
+            this.bot.on('death', () => {
+                console.log(`Bot died. Disconnecting...`);
+    
+                // Clear all timeouts and intervals before disconnecting
+                this.clearTimeoutsAndIntervals();
+    
+                // Send disconnect message
+                this.sendDiscordMessage(`(💀) ${this.bot.username} died. Terminating the process...`);
+    
+                // Disconnect the bot
+                process.exit();
+            });
+            
         });
-    }
+    }   
 }
-const botNames = ['__Lnzz__', 'SILENT'];
+const botNames = [
+    '__Lnzz__','SILENT'];
 const baseBotConfig = {
     host: '139.99.124.74',
     port: '25576',
@@ -342,22 +445,29 @@ const baseBotConfig = {
     version: '1.20.1',
     hideError: false
 };
+const delayBetweenBotCreation = 2000;
 const botControllers = [];
 const reconnectDelay = 15000;
-const mobsToAttack = ['Ghast', 'zombified_piglin'];
+const mobsToAttack = ['Ghast', 'Zombified Piglin'];
 const farmCoordinates = {
     'Gast Farm Kill Chamber': { x: -99579, y: 128, z: -301193 },
     'Gast Farm Afk Chamber': { x: -12448, y: 175, z: -37649 }
 };
+createBotControllers();
+async function createBotControllers() {
+    for (const name of botNames) {
+        const botConfig = {
+            ...baseBotConfig,
+            username: name
+        };
 
-for (const name of botNames) {
-    const botConfig = {
-        ...baseBotConfig,
-        username: name
-    };
+        const botController = new BotController(botConfig, reconnectDelay, farmCoordinates, mobsToAttack);
+        botControllers.push(botController);
 
-    const botController = new BotController(botConfig, reconnectDelay, farmCoordinates, mobsToAttack);
-    botControllers.push(botController);
+        // Introduce a delay before creating the next bot controller
+        await new Promise(resolve => setTimeout(resolve, delayBetweenBotCreation));
+    }
 }
+
 
 // const botController = new BotController(botConfig, reconnectDelay, farmCoordinates, mobsToAttack);
