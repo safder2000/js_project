@@ -1,11 +1,6 @@
 const mineflayer = require('mineflayer');
 const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
 const axios = require('axios');
-
-
-
-
-
 class BotController {
     constructor(botConfig, reconnectDelay, farmCoordinates, mobsToAttack) {
         this.shouldCheckActivity = true;
@@ -24,19 +19,19 @@ class BotController {
 
         this.bot.on('login', () => {
             let botSocket = this.bot._client.socket;
-            console.log(`Logged in to ${botSocket.server ? botSocket.server : botSocket._host}`);
+           console.log(`Logged in to ${botSocket.server ? botSocket.server : botSocket._host}`);
         });
 
         this.bot.on('spawn', async () => {
-            console.log("Spawned in");
+           console.log("Spawned in");
             await this.bot.waitForTicks(50);
             this.bot.chat("/login poocha");
             this.handleAfterLogin();
         });
 
         this.bot.on('end', (err) => {
-            console.log(`Disconnected: ${err ? err : 'intentional disconnect'}`);
-            this.sendDiscordMessage(`(🦵) ${this.bot.username} Disconnected`);
+           console.log(`[${this.bot.username}]-🦶- Disconnected: ${err ? err : 'intentional disconnect'}`);
+            this.sendDiscordMessage(`[${this.bot.username}]-🦶-  Disconnected`);
 
             // Clear all timeouts
             this.timeoutIds.forEach((timeoutId) => clearTimeout(timeoutId));
@@ -50,26 +45,31 @@ class BotController {
         });
 
         this.bot.on('kicked', (reason) => {
-            this.sendDiscordMessage(`(🦵) ...${this.bot.username} got kicked from the server - Reason > ${reason}`);
-            console.log('Kicked for reason', reason);
-            console.log(`Try reconnecting in: ${this.reconnectDelay / 1000} seconds`);
+            this.sendDiscordMessage(`[${this.bot.username}]-🦶- got kicked from the server - Reason > ${reason}`);
+           console.log(`[${this.bot.username}] Kicked for reason`, reason);
+           console.log(`[${this.bot.username}] Try reconnecting in: ${this.reconnectDelay / 1000} seconds`);
             setTimeout(() => this.initBot(), this.reconnectDelay);
         });
 
         this.bot.on('error', (err) => {
             if (err.code === 'ECONNREFUSED') {
-                console.log(`Failed to connect to ${err.address}:${err.port}`);
+               console.log(`[${this.bot.username}] Failed to connect to ${err.address}:${err.port}`);
             } else {
-                console.log(`Unhandled error: ${err}`);
+               console.log(`[${this.bot.username}] Unhandled error: ${err}`);
             }
-            console.log(`Try reconnecting in: ${this.reconnectDelay / 1000} seconds`);
+           console.log(`[${this.bot.username}] Try reconnecting in: ${this.reconnectDelay / 1000} seconds`);
             setTimeout(() => this.initBot(), this.reconnectDelay);
         });
     }
-    checkActivity() {
-        if (!this.shouldCheckActivity) {
+
+
+    async checkActivity() {
+        if (!this.shouldCheckActivity || !this.bot.entity) {
             return;
         }
+    
+        // Wait for 10 ticks
+        await this.bot.waitForTicks(10);
     
         const currentTime = Date.now();
         const elapsedTime = currentTime - this.lastActivityTimestamp;
@@ -77,6 +77,11 @@ class BotController {
         // Check if the bot is within a 100 block radius of 0,0,0
         const proximityRadius = 100;
         const botPosition = this.bot.entity.position;
+    
+        if (!botPosition) {
+            return; // Ensure botPosition is defined
+        }
+    
         const distanceToZeroZero = Math.sqrt(
             Math.pow(botPosition.x, 2) + Math.pow(botPosition.y, 2) + Math.pow(botPosition.z, 2)
         );
@@ -101,6 +106,7 @@ class BotController {
         }
     }
     
+    
     handleAfterLogin() {
         const defaultMove = new Movements(this.bot);
     
@@ -119,7 +125,7 @@ class BotController {
                 this.npcTp();
                 this.checkActivity();
             } else if (message.toString().includes('Unknown command. Type "/help" for help')) {
-                console.log('Received the specified chat message. Stopping checkActivity...');
+               console.log('Received the specified chat message. Stopping checkActivity...');
 
                 // Clear all timeouts and intervals before stopping
                 this.clearTimeoutsAndIntervals();
@@ -128,7 +134,7 @@ class BotController {
 
 
     const farmStatus = this.isNearFarm(this.farmCoordinates);
-    const dcMsg = `(🔑)...${this.bot.username} ready for duty, status > ${farmStatus.toString()}`;
+    const dcMsg = `[🔑] Ready for duty, status > ${farmStatus.toString()}`;
     this.sendDiscordMessage(dcMsg);
 
     
@@ -153,7 +159,7 @@ class BotController {
     
 
 
-    // console.log('loop exit');
+    //console.log('loop exit');
     moveToArmorStandAndAttack(targetPosition) {
         const defaultMove = new Movements(this.bot);
     
@@ -166,22 +172,48 @@ class BotController {
             this.bot.lookAt(this.bot.entity.position.offset(0, -1.6, 0));
     
             const intervalId = setInterval(() => {
+                let times = 0;
                 const mobFilter = e => e.type === 'mob';
                 const mob = this.bot.nearestEntity(mobFilter);
     
-                if (mob) {
-                    console.log('Attacking mob!');
-                    // Generate a random delay between 1 to 3 seconds
+                if (mob && this.bot.entity.position.distanceTo(mob.position) < 4) {
+            
+                    let logMessage = 'Checking for mobs';
+                    process.stdout.write('\r' + logMessage);
+    
+                    let sword = null;
+                    for (const item of this.bot.inventory.slots) {
+                        if (item && item.name && item.name.includes('sword')) {
+                            sword = item;
+                            break;
+                        }
+                    }
+    
                     const delay = Math.floor(Math.random() * (3000 - 1000 + 1)) + 1000;
+                 
     
                     setTimeout(() => {
-                        this.bot.attack(mob);
+                        if (sword) {
+                            times= times+1;
+                            logMessage = `🔪 - Attacking with sword [${mob.name}] ,(${times.toString()}) - next attack in ${(delay/1000).toString()} sec`;
+                            process.stdout.write('\r' + logMessage);
+                            this.bot.equip(sword, 'hand');
+                            this.bot.attack(mob);
+                        } else {
+                            times= times+1;
+                            logMessage = `👊 - Attacking without a sword  [${mob.name}],(${times.toString()}) - next attack in ${(delay/1000).toString()} sec`;
+                            process.stdout.write('\r' + logMessage);
+                            this.bot.attack(mob);
+                        }
                     }, delay);
+                } else {
+                    process.stdout.write('\r'); // Clear the line
                 }
-            }, 1000);
+            }, 3000);
             this.intervalIds.push(intervalId);
         });
     }
+    
 
     antiAfk() {
         const getRandomInt = (minSeconds, maxSeconds) => {
@@ -189,7 +221,7 @@ class BotController {
             const maxMilliseconds = maxSeconds * 1000;
             return Math.floor(Math.random() * (maxMilliseconds - minMilliseconds + 1)) + minMilliseconds;
         };
-    
+        const checkHealthTime =  0;
         const randomizeActions = () => {
             // Generate a random number to determine the action
             const actionSelector = Math.random();
@@ -202,6 +234,10 @@ class BotController {
             else if (actionSelector < 0.8) {
                 this.bot.swingArm();
             }
+            else if(checkHealthTime>500){
+                this.checkHealthAndHunger();
+                checkHealthTime = 0;
+            }
             // 20% chance of jumping
             else {
                 this.bot.setControlState('jump', true);
@@ -209,7 +245,8 @@ class BotController {
             }
     
             // Schedule the next random action
-            setTimeout(randomizeActions, getRandomInt(2, 6));
+            const timeoutId = setTimeout(randomizeActions, getRandomInt(2, 6));
+            this.timeoutIds.push(timeoutId);
         };
     
         // Start the anti-AFK loop
@@ -218,11 +255,12 @@ class BotController {
 
     sendDiscordMessage(content) {
         const webhookUrl = 'https://discord.com/api/webhooks/1188774069944975411/UmOS6b9lt_qsHgFJxUv2uCd48l8NssyEoh1GufLWHlVslm8pvMiMaHS2k6EMMhbhAzJg';
-    
+        const msg =  `[${this.bot.username}] : `+content;
+        const coloredContent = '```css\n' + msg + '\n```';
         try {
-            axios.post(webhookUrl, { content: content })
+            axios.post(webhookUrl, { content: coloredContent })
                 .then(response => {
-                    console.log('Message sent successfully:'+content.toString(), response.data);
+                   console.log('Message sent successfully:'+content.toString(), response.data);
                 })
                 .catch(error => {
                     console.error('Error sending message:', error.message);
@@ -233,7 +271,7 @@ class BotController {
     }
     
     isNearFarm(farmCoordinates) {
-        const proximityRadius = 2;
+        const proximityRadius = 5;
         const nearProximityRadius = 10;
     
         // Use an arrow function to bind 'this'
@@ -247,20 +285,20 @@ class BotController {
         };
     
         for (const [farmName, coordinates] of Object.entries(farmCoordinates)) {
-            console.log(`Checking proximity for ${farmName}`);
+           console.log(`Checking proximity for ${farmName}`);
             
             if (checkProximity(coordinates, proximityRadius)) {
-                console.log(`At ${farmName}`);
+               console.log(`At ${farmName}`);
                 return `At ${farmName}`;
             }
     
             if (checkProximity(coordinates, nearProximityRadius)) {
-                console.log(`Near ${farmName}`);
+               console.log(`Near ${farmName}`);
                 return `Near ${farmName}`;
             }
         }
     
-        console.log(` ${this.bot.name} ⚠️ Not near any farm`);
+       console.log(` ${this.bot.name} ⚠️ Not near any farm`);
         return 'Not near any farm';
     }
     
@@ -307,11 +345,11 @@ class BotController {
                     const targetEntity = this.bot.entityAtCursor(maxDistance);
 
                     if (targetEntity) {
-                        console.log("+ Entity found within the specified distance.");
+                       console.log(`+[${this.bot.username}] - Entity found within the specified distance.`);
                         this.bot.activateEntity(targetEntity);
-                        console.log("+ Activated entity:");
+                       console.log(`+[${this.bot.username}] - Activated entity:`);
                     } else {
-                        console.log("+ No entity found within the specified distance.");
+                       console.log(`+[${this.bot.username}] - No entity found within the specified distance.`);
                     }
                 }, 500);
             }, 50 * this.bot.time.tick);
@@ -322,7 +360,7 @@ class BotController {
 
     logCurrentPosition() {
         const currentPosition = this.bot.entity.position;
-        console.log('Current Position:', {
+       console.log('Current Position:', {
             x: currentPosition.x.toFixed(0),
             y: currentPosition.y.toFixed(0),
             z: currentPosition.z.toFixed(0)
@@ -340,7 +378,7 @@ class BotController {
     
     checkHealthAndHunger() {
 
-        console.log('💓 Checking health');
+       
         const healthWarningThreshold = 15; // Send warning if health is below 15
         const healthDisconnectThreshold = 10; // Disconnect if health is below 10
         const hungerWarningThreshold = 15; // Send warning if hunger is below 15
@@ -350,17 +388,17 @@ class BotController {
         const hunger = this.bot.food;
     
         if (health < healthWarningThreshold) {
-            console.log(`Bot's health is below ${healthWarningThreshold}. Sending warning...`);
-            this.sendDiscordMessage(`(⚠️) ${this.bot.username}'s health is low (${health}).`);
+           console.log(`${this.bot.username} 💓-⚠️ health is below ${healthWarningThreshold}. Sending warning...`);
+            this.sendDiscordMessage(`(💓-⚠️) ${this.bot.username}'s health is low (${health}).`);
         }
     
         if (hunger < hungerWarningThreshold) {
-            console.log(`Bot's hunger is below ${hungerWarningThreshold}. Sending warning...`);
-            this.sendDiscordMessage(`(⚠️) ${this.bot.username}'s hunger is low (${hunger}).`);
+           console.log(`${this.bot.username}(🍗-⚠️) hunger is below ${hungerWarningThreshold}. Sending warning...`);
+            this.sendDiscordMessage(`(🍗-⚠️) ${this.bot.username}'s hunger is low (${hunger}).`);
         }
     
         if (health < healthDisconnectThreshold || hunger < hungerDisconnectThreshold) {
-            console.log(` ${this.bot.username}__health or hunger is below the disconnect threshold. Disconnecting...`);
+           console.log(` ${this.bot.username}__health or hunger is below the disconnect threshold. Disconnecting...`);
     
             // Clear all timeouts and intervals before disconnecting
             this.timeoutIds.forEach((timeoutId) => clearTimeout(timeoutId));
@@ -370,10 +408,10 @@ class BotController {
             this.intervalIds = [];
     
             // Send disconnect message
-            this.sendDiscordMessage(`(⚠️) ${this.bot.username} disconnected due to low health or hunger`);
+            this.sendDiscordMessage(`💀 (🍗) [${this.bot.username}] critical hunger ${hungerWarningThreshold}`);
     
             // Disconnect the bot
-            this.bot.end();
+            // this.bot.end();
         }
     }
     clearTimeoutsAndIntervals() {
@@ -403,25 +441,29 @@ class BotController {
 
         this.bot.on('login', () => {
             let botSocket = this.bot._client.socket;
-            console.log(`Logged in to ${botSocket.server ? botSocket.server : botSocket._host}`);
+           console.log(`[${this.bot.username}] - Logged in to ${botSocket.server ? botSocket.server : botSocket._host}`);
         });
 
         this.bot.on('spawn', async () => {
-            console.log("Spawned in");
-            await this.bot.waitForTicks(10);
-            this.bot.once('message', (message) => {   if (!message.toString().includes('left the game') && !message.toString().includes('joined the game') && !message.toString().includes('was killed by')) {
-                console.log(`[Chat] ${message.toString()}`);
-            }});
+           console.log(`[${this.bot.username}]  - Spawned in`);
+          
+
             await this.bot.waitForTicks(50);
             this.bot.chat("/login poocha");
-            console.log('🔑 Password entered ');
+            await this.bot.waitForTicks(5);
+            this.bot.once('message', (message) => {   if (!message.toString().includes('left the game') && !message.toString().includes('joined the game') && !message.toString().includes('was killed by')) {
+                console.log(`[Chat] ${message.toString()}`);
+             }});
+           console.log('🔑 Password entered ');
             this.handleAfterLogin();
-            const healthHungerCheckInterval = setInterval(() => {
-                this.checkHealthAndHunger();
-            }, 60000);  
-            this.intervalIds.push(healthHungerCheckInterval);
+            const restartIntervel = setInterval(() => {
+                this.initBot();
+            }, 100000);  
+            console.log(`[${this.bot.username}}] Attempting to reconnect in ${100000/1000} sec`)
+            this.intervalIds.push(restartIntervel);
+            
             this.bot.on('death', () => {
-                console.log(`Bot died. Disconnecting...`);
+               console.log(`Bot died. Disconnecting...`);
     
                 // Clear all timeouts and intervals before disconnecting
                 this.clearTimeoutsAndIntervals();
@@ -453,21 +495,53 @@ const farmCoordinates = {
     'Gast Farm Kill Chamber': { x: -99579, y: 128, z: -301193 },
     'Gast Farm Afk Chamber': { x: -12448, y: 175, z: -37649 }
 };
-createBotControllers();
+async function createBotController(name) {
+    const botConfig = {
+        ...baseBotConfig,
+        username: name
+    };
+
+    const botController = new BotController(botConfig, reconnectDelay, farmCoordinates, mobsToAttack);
+    botControllers.push(botController);
+
+    // Introduce a delay before creating the next bot controller
+    await new Promise(resolve => setTimeout(resolve, delayBetweenBotCreation));
+}
+
+let shouldContinue = true;
+
 async function createBotControllers() {
+    const startTime = Date.now();
+
     for (const name of botNames) {
-        const botConfig = {
-            ...baseBotConfig,
-            username: name
-        };
+        if (!shouldContinue) {
+           console.log("Stopping the bot creation process.");
+            return;
+        }
 
-        const botController = new BotController(botConfig, reconnectDelay, farmCoordinates, mobsToAttack);
-        botControllers.push(botController);
-
-        // Introduce a delay before creating the next bot controller
-        await new Promise(resolve => setTimeout(resolve, delayBetweenBotCreation));
+        try {
+            await createBotController(name);
+        } catch (error) {
+            console.error(`Error creating bot '${name}':`, error.message);
+            // Restart bot creation after a delay
+            console.log(`Restarting bot creation for '${name}' within 10 seconds...`);
+            await new Promise(resolve => setTimeout(resolve, 10000));
+            await createBotController(name);
+        }
     }
+
+    const elapsedTime = Date.now() - startTime;
+    if (elapsedTime > 15 * 60 * 1000) {
+        console.log(`Bot creation process exceeded 15 minutes. Stopping the process.`);
+        shouldContinue = false;
+        return;
+    }
+
+    // Schedule the next execution of the function
+    setTimeout(() => {
+        createBotControllers();
+    }, 15 * 60 * 1000); // You can adjust the delay as needed
 }
 
 
-// const botController = new BotController(botConfig, reconnectDelay, farmCoordinates, mobsToAttack);
+createBotControllers();
