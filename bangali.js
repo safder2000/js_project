@@ -7,6 +7,9 @@ class BotController {
         this. lastActivityTimestamp = Date.now();
         this.timeoutIds = [];
         this.intervalIds = [];
+        this.inactivityTimeoutIDs = [];
+
+
 
         this.botConfig = botConfig;
         this.reconnectDelay = reconnectDelay;
@@ -24,28 +27,33 @@ class BotController {
 
         this.bot.on('spawn', async () => {
            console.log("Spawned in");
-            await this.bot.waitForTicks(50);
+            await this.bot.waitForTicks(80);
             this.bot.chat("/login poocha");
             this.handleAfterLogin();
+            this.shouldCheckActivity = true;
+            this.checkActivity();
         });
 
-        this.bot.on('end', (err) => {
-           console.log(`[${this.bot.username}]-🦶- Disconnected: ${err ? err : 'intentional disconnect'}`);
-            this.sendDiscordMessage(`[${this.bot.username}]-🦶-  Disconnected`);
+        this.bot.on('end',async (err) => {
+           console.log(`[${this.bot.username}]-➡️🚪- Disconnected: ${err ? err : 'intentional disconnect'}`);
+            this.sendDiscordMessage(`[${this.bot.username}]-➡️🚪-  Disconnected`);
 
             // Clear all timeouts
             this.timeoutIds.forEach((timeoutId) => clearTimeout(timeoutId));
+            this.inactivityTimeoutIDs.forEach((timeoutId) => clearTimeout(timeoutId));
             this.timeoutIds = [];
+            this.inactivityTimeoutIDs = [];
 
             // Clear all intervals
             this.intervalIds.forEach((intervalId) => clearInterval(intervalId));
             this.intervalIds = [];
 
+            // await this.bot.waitfo(120);
             setTimeout(() => this.initBot(), this.reconnectDelay);
         });
 
         this.bot.on('kicked', (reason) => {
-            this.sendDiscordMessage(`[${this.bot.username}]-🦶- got kicked from the server - Reason > ${reason}`);
+            this.sendDiscordMessage(`[${this.bot.username}]-🦿➡️🚪- got kicked from the server - Reason > ${reason}`);
            console.log(`[${this.bot.username}] Kicked for reason`, reason);
            console.log(`[${this.bot.username}] Try reconnecting in: ${this.reconnectDelay / 1000} seconds`);
             setTimeout(() => this.initBot(), this.reconnectDelay);
@@ -64,7 +72,11 @@ class BotController {
 
 
     async checkActivity() {
+    
         if (!this.shouldCheckActivity || !this.bot.entity) {
+            this.inactivityTimeoutIDs.forEach((timeoutId) => clearTimeout(timeoutId));
+            this.inactivityTimeoutIDs =[]; 
+            console.log(`[${this.bot.username}] 🕒 Left the lobby, Stoped checking for inactivity`);
             return;
         }
     
@@ -77,6 +89,7 @@ class BotController {
         // Check if the bot is within a 100 block radius of 0,0,0
         const proximityRadius = 100;
         const botPosition = this.bot.entity.position;
+        console.log(`[${this.bot.username}] 🕒 start checking for inactivity,  (waiting ${(((120000- elapsedTime)/60)/1000).toFixed(2)} min before qutting) `);
     
         if (!botPosition) {
             return; // Ensure botPosition is defined
@@ -101,9 +114,15 @@ class BotController {
     
             // Stop further execution of checkActivity
             this.shouldCheckActivity = false;
-        } else {
-            setTimeout(() => this.checkActivity(), 10000); // Check activity every 10 seconds
-        }
+        } else if (elapsedTime > 120000 && distanceToZeroZero < proximityRadius){
+            console.log(`[${this.bot.username}] 🔃 inactive for ${120000/60/1000 } min, --> quiting`);
+            this.bot.quit()
+        }else {
+            
+         const  inactivityID =   setTimeout(() => this.checkActivity(), 10000); 
+            this.inactivityTimeoutIDs.push(inactivityID);
+            // Check activity every 10 seconds
+        } 
     }
     
     
@@ -139,6 +158,9 @@ class BotController {
 
     
     if (farmStatus.includes('At')) {
+        this.inactivityTimeoutIDs.forEach((timeoutId) => clearTimeout(timeoutId));
+        this.timeoutIds = [];
+        this.shouldCheckActivity = false;
         if (farmStatus.includes('Kill')) {
         
                 const armorStandPos = { x: -99579, y: 128, z: -301193 }
@@ -148,6 +170,7 @@ class BotController {
         } else if (farmStatus.includes('Afk')) {
             this.antiAfk();
         }
+
     }
 
             }
@@ -304,6 +327,8 @@ class BotController {
     
 
     npcTp() {
+        console.log(` [${this.bot.name}] -🗽-Targeting npc`);
+
         const npcCord = { x: 33, y: 67, z: 41 };
         const defaultMove = new Movements(this.bot);
 
@@ -448,19 +473,22 @@ class BotController {
            console.log(`[${this.bot.username}]  - Spawned in`);
           
 
-            await this.bot.waitForTicks(50);
+            await this.bot.waitForTicks(120);
             this.bot.chat("/login poocha");
-            await this.bot.waitForTicks(5);
+          
+            // await this.bot.waitForTicks(5);
             this.bot.once('message', (message) => {   if (!message.toString().includes('left the game') && !message.toString().includes('joined the game') && !message.toString().includes('was killed by')) {
-                console.log(`[Chat] ${message.toString()}`);
+                console.log(`[${this.bot.username}][Chat] ${message.toString()}`);
              }});
-           console.log('🔑 Password entered ');
+           console.log('[${this.bot.username}] -🔑-  Password entered ');
             this.handleAfterLogin();
-            const restartIntervel = setInterval(() => {
-                this.initBot();
-            }, 100000);  
-            console.log(`[${this.bot.username}}] Attempting to reconnect in ${100000/1000} sec`)
-            this.intervalIds.push(restartIntervel);
+            // const restartIntervel = setInterval(() => {
+                this.shouldCheckActivity = true;
+                this.checkActivity();
+                // this.bot.quit();
+            // }, 100000);  
+            // console.log(`[${this.bot.username}}] Attempting to reconnect in (in class)${100000/1000} sec`)
+            // this.intervalIds.push(restartIntervel);
             
             this.bot.on('death', () => {
                console.log(`Bot died. Disconnecting...`);
@@ -539,7 +567,9 @@ async function createBotControllers() {
 
     // Schedule the next execution of the function
     setTimeout(() => {
-        createBotControllers();
+        console.log(`] Attempting to reconnect in (out side class)${15 * 60 * 1000} min`)
+        BotController.bot.quit();
+        // createBotControllers();
     }, 15 * 60 * 1000); // You can adjust the delay as needed
 }
 
