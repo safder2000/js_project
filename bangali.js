@@ -29,8 +29,8 @@ class BotController {
             console.log(`[${this.bot.username}] Spawned in  `);
             await this.bot.waitForTicks(80);
             this.bot.chat("/login poocha");
-            this.bot.quit();
-            // this.handleAfterLogin();
+            // this.bot.quit();
+            this.handleAfterLogin();
             this.shouldCheckActivity = true;
             this.checkActivity();
         });
@@ -79,6 +79,7 @@ class BotController {
 
 
     async checkActivity() {
+       const timeForwaiting = 2*60*1000;
 
         if (!this.shouldCheckActivity || !this.bot.entity) {
             this.inactivityTimeoutIDs.forEach((timeoutId) => clearTimeout(timeoutId));
@@ -96,7 +97,7 @@ class BotController {
         // Check if the bot is within a 100 block radius of 0,0,0
         const proximityRadius = 100;
         const botPosition = this.bot.entity.position;
-        console.log(`[${this.bot.username}] 🕒 start checking for inactivity,  (waiting ${(((120000 - elapsedTime) / 60) / 1000).toFixed(2)} min before qutting) `);
+        console.log(`[${this.bot.username}] 🕒 start checking for inactivity,  (waiting ${(((timeForwaiting - elapsedTime) / 60) / 1000).toFixed(2)} min before qutting) `);
 
         if (!botPosition) {
             return; // Ensure botPosition is defined
@@ -116,13 +117,13 @@ class BotController {
 
             // Stop further execution of checkActivity
             this.shouldCheckActivity = false;
-        } else if (elapsedTime > 120000 && distanceToZeroZero > proximityRadius) {
+        } else if (elapsedTime > timeForwaiting && distanceToZeroZero > proximityRadius) {
             console.log(`No activity for over 1 minute. Stopping checkActivity...   `);
 
             // Stop further execution of checkActivity
             this.shouldCheckActivity = false;
-        } else if (elapsedTime > 120000 && distanceToZeroZero < proximityRadius) {
-            console.log(`[${this.bot.username}] 🔃 inactive for ${120000 / 60 / 1000} min, --> quiting   `);
+        } else if (elapsedTime > timeForwaiting && distanceToZeroZero < proximityRadius) {
+            console.log(`[${this.bot.username}] 🔃 inactive for ${timeForwaiting / 60 / 1000} min, --> quiting   `);
             this.bot.quit()
         } else {
 
